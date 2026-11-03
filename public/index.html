@@ -42,7 +42,6 @@ small,.muted{color:#64748b}.danger{color:#b42318}
 <script>
 const $=id=>document.getElementById(id);
 let token=sessionStorage.getItem("wr_token")||"", me=null, numbers=[], currentNumber="";
-
 async function api(action, data = {}) {
   const response = await fetch("/api", {
     method: "POST",
@@ -86,7 +85,6 @@ async function api(action, data = {}) {
 
   return result.data;
 }
-
 function note(s){$("notice").textContent=s;setTimeout(()=>{$("notice").textContent=""},5000)}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function table(headers,rows){return "<table><thead><tr>"+headers.map(x=>"<th>"+x+"</th>").join("")+"</tr></thead><tbody>"+rows.join("")+"</tbody></table>"}
