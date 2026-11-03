@@ -42,10 +42,51 @@ small,.muted{color:#64748b}.danger{color:#b42318}
 <script>
 const $=id=>document.getElementById(id);
 let token=sessionStorage.getItem("wr_token")||"", me=null, numbers=[], currentNumber="";
-async function api(action,data={}){
- const r=await fetch("/api",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,token,...data})});
- const j=await r.json(); if(!j.success) throw new Error(j.error||"Permintaan gagal"); return j.data;
+
+async function api(action, data = {}) {
+  const response = await fetch("/api", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      action,
+      token,
+      ...data
+    })
+  });
+
+  const raw = await response.text();
+
+  if (!raw || !raw.trim()) {
+    throw new Error(
+      "Server mengirim respons kosong. HTTP " +
+      response.status
+    );
+  }
+
+  let result;
+
+  try {
+    result = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      "Respons server bukan JSON. HTTP " +
+      response.status +
+      ". Isi respons: " +
+      raw.slice(0, 300)
+    );
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error || "Permintaan gagal. HTTP " + response.status
+    );
+  }
+
+  return result.data;
 }
+
 function note(s){$("notice").textContent=s;setTimeout(()=>{$("notice").textContent=""},5000)}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function table(headers,rows){return "<table><thead><tr>"+headers.map(x=>"<th>"+x+"</th>").join("")+"</tr></thead><tbody>"+rows.join("")+"</tbody></table>"}
