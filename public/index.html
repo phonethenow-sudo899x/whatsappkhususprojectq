@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp Respon Management</title>
+<style>
+:root{font-family:Inter,Arial,sans-serif;color:#172033;background:#f3f6fb}*{box-sizing:border-box}body{margin:0}.hidden{display:none!important}
+header{background:#102a43;color:white;padding:16px 22px;display:flex;justify-content:space-between;align-items:center}
+main{max-width:1200px;margin:24px auto;padding:0 16px}.panel{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 12px #0b25400a}
+.login{max-width:420px;margin:8vh auto}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat{background:#f7fafc;border-radius:12px;padding:16px}.stat b{font-size:28px;display:block;margin-top:8px}
+input,select,textarea,button{font:inherit;padding:11px;border:1px solid #cbd5e1;border-radius:8px;width:100%;margin:5px 0}
+textarea{min-height:90px}button{background:#087f5b;color:white;border:0;font-weight:700;cursor:pointer}button.secondary{background:#e8eef5;color:#172033}
+.row{display:flex;gap:10px;align-items:center}.row>*{flex:1}nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}nav button{width:auto;padding:9px 13px}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid #e8edf3;font-size:14px}
+#messages{height:330px;overflow:auto;background:#f7fafc;padding:12px;border-radius:10px}.bubble{padding:9px 12px;border-radius:10px;margin:7px 0;max-width:85%;white-space:pre-wrap}.incoming{background:#e7eef7}.outgoing{background:#d8f5e5;margin-left:auto}
+small,.muted{color:#64748b}.danger{color:#b42318}
+@media(max-width:600px){.row{display:block}header{padding:12px}}
+</style>
+</head>
+<body>
+<header><strong>WhatsApp Respon Management</strong><button id="logout" class="secondary hidden" style="width:auto">Keluar</button></header>
+<main>
+<section id="login" class="panel login">
+<h2>Masuk ke Dashboard</h2><p class="muted">Gunakan akun admin atau operator.</p>
+<form id="loginForm"><input id="username" placeholder="Username" autocomplete="username" required><input id="password" type="password" placeholder="Password" autocomplete="current-password" required><button>Login</button></form><p id="loginError" class="danger"></p>
+</section>
+<section id="app" class="hidden">
+<div class="panel"><div class="row"><div><h2 id="welcome">Dashboard</h2><small id="roleInfo"></small></div><div><label>Nomor WhatsApp</label><select id="numberSelect"></select></div></div></div>
+<nav>
+<button data-tab="home">Dashboard</button><button data-tab="chat">Percakapan</button><button data-tab="crm">CRM</button><button data-tab="keywords">Auto Respon</button><button data-tab="schedule">Jadwal</button><button data-tab="admin" id="adminTab" class="hidden">Manajemen</button>
+</nav>
+<div id="home" class="tab panel"><h3>Ringkasan</h3><div id="stats" class="grid"></div><div id="numberReport"></div></div>
+<div id="chat" class="tab panel hidden"><h3>Live Chat / Balas Manual</h3><div class="row"><select id="chatContact"><option value="">Pilih kontak</option></select><button id="refreshChat" class="secondary">Muat ulang</button></div><div id="messages"></div><textarea id="replyText" placeholder="Tulis balasan..."></textarea><button id="sendBtn">Kirim Pesan</button></div>
+<div id="crm" class="tab panel hidden"><h3>CRM Pelanggan</h3><div class="row"><input id="cPhone" placeholder="Nomor HP"><input id="cName" placeholder="Nama pelanggan"></div><div class="row"><select id="cCategory"><option>Prospek</option><option>Pelanggan aktif</option><option>Nonaktif</option></select><input id="cNotes" placeholder="Catatan"></div><button id="saveContact">Simpan Kontak</button><div id="contactsTable"></div></div>
+<div id="keywords" class="tab panel hidden"><h3>Kata Kunci Otomatis</h3><div class="row"><input id="keyword" placeholder="Kata kunci"><select id="matchType"><option value="contains">Mengandung kata</option><option value="exact">Sama persis</option></select></div><textarea id="keywordReply" placeholder="Balasan otomatis"></textarea><button id="saveKeyword">Tambah Aturan</button><div id="keywordsTable"></div></div>
+<div id="schedule" class="tab panel hidden"><h3>Penjadwalan Pesan</h3><input id="scheduleTo" placeholder="Nomor tujuan, contoh 62812..."><input id="scheduleAt" type="datetime-local"><textarea id="scheduleMessage" placeholder="Isi pesan"></textarea><button id="saveSchedule">Jadwalkan Pesan</button><div id="scheduleTable"></div></div>
+<div id="admin" class="tab panel hidden"><h3>Manajemen Admin</h3><h4>Daftarkan nomor WhatsApp</h4><input id="nLabel" placeholder="Label, contoh NOHP 01"><input id="nPhoneId" placeholder="Meta Phone Number ID"><input id="nDisplay" placeholder="Nomor tampil, contoh +628..."><button id="saveNumber">Simpan Nomor</button><hr><h4>Buat operator (maksimal 10)</h4><div class="row"><input id="opUsername" placeholder="Username operator"><input id="opPassword" type="password" placeholder="Password minimal 14 karakter"></div><select id="opNumber"></select><button id="createOperator">Buat Operator</button><div id="usersTable"></div><div id="reports"></div></div>
+<p id="notice" class="muted" role="status"></p>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let token=sessionStorage.getItem("wr_token")||"", me=null, numbers=[], currentNumber="";
+async function api(action,data={}){
+ const r=await fetch("/api",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,token,...data})});
+ const j=await r.json(); if(!j.success) throw new Error(j.error||"Permintaan gagal"); return j.data;
+}
+function note(s){$("notice").textContent=s;setTimeout(()=>{$("notice").textContent=""},5000)}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function table(headers,rows){return "<table><thead><tr>"+headers.map(x=>"<th>"+x+"</th>").join("")+"</tr></thead><tbody>"+rows.join("")+"</tbody></table>"}
+async function boot(){
+ try{
+  if(!token){showLogin();return}
+  me=await api("me"); numbers=await api("numbers");
+  $("login").classList.add("hidden");$("app").classList.remove("hidden");$("logout").classList.remove("hidden");
+  $("welcome").textContent="Halo, "+me.username;$("roleInfo").textContent=me.role==="admin"?"Administrator pusat":"Operator · akses nomor pribadi";
+  $("adminTab").classList.toggle("hidden",me.role!=="admin");
+  $("numberSelect").innerHTML=numbers.map(n=>`<option value="${esc(n.numberId)}">${esc(n.label)} · ${esc(n.displayPhone)}</option>`).join("");
+  $("opNumber").innerHTML=numbers.map(n=>`<option value="${esc(n.numberId)}">${esc(n.label)}</option>`).join("");
+  currentNumber=numbers[0]?.numberId||"";$("numberSelect").value=currentNumber;
+  await loadHome();
+ }catch(e){token="";sessionStorage.removeItem("wr_token");showLogin();$("loginError").textContent=e.message}
+}
+function showLogin(){$("login").classList.remove("hidden");$("app").classList.add("hidden");$("logout").classList.add("hidden")}
+async function loadHome(){
+ const d=await api("dashboard");
+ $("stats").innerHTML=[["Nomor aktif",d.totalNumbers],["Total pesan",d.totalMessages],["Pesan masuk",d.incoming],["Pesan keluar",d.outgoing]].map(x=>`<div class="stat">${x[0]}<b>${x[1]}</b></div>`).join("");
+ $("numberReport").innerHTML=me.role==="admin"?"<h4>Nomor terkelola</h4>"+table(["Nomor","Telepon"],d.numbers.map(n=>`<tr><td>${esc(n.label)}</td><td>${esc(n.displayPhone)}</td></tr>`)):"";
+}
+async function loadContacts(){
+ const a=await api("contacts",{numberId:currentNumber});
+ $("contactsTable").innerHTML=table(["Nama","Nomor","Kategori","Catatan"],a.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.phone)}</td><td>${esc(c.category)}</td><td>${esc(c.notes)}</td></tr>`));
+ $("chatContact").innerHTML='<option value="">Pilih kontak</option>'+a.map(c=>`<option value="${esc(c.phone)}">${esc(c.name||c.phone)} (${esc(c.phone)})</option>`).join("");
+}
+async function loadChat(){
+ const phone=$("chatContact").value;if(!phone){$("messages").innerHTML="Pilih kontak terlebih dahulu.";return}
+ const a=await api("messages",{numberId:currentNumber,contactPhone:phone});
+ $("messages").innerHTML=a.map(m=>`<div class="bubble ${m.direction==="IN"?"incoming":"outgoing"}"><small>${m.direction==="IN"?"Masuk":"Keluar"} · ${esc(m.status)}</small><br>${esc(m.message)}</div>`).join("");
+ $("messages").scrollTop=$("messages").scrollHeight;
+}
+async function loadKeywords(){
+ const a=await api("keywords",{numberId:currentNumber});
+ $("keywordsTable").innerHTML=table(["Kata kunci","Balasan","Mode","Aktif"],a.map(k=>`<tr><td>${esc(k.keyword)}</td><td>${esc(k.reply)}</td><td>${esc(k.matchType)}</td><td>${String(k.active)==="true"?"Ya":"Tidak"} <button class="secondary" onclick="toggleRule('${esc(k.keywordId)}',${String(k.active)!=="true"})">Ubah</button></td></tr>`));
+}
+async function toggleRule(id,active){try{await api("toggleKeyword",{keywordId:id,active});await loadKeywords()}catch(e){note(e.message)}}
+async function loadSchedules(){
+ const a=await api("schedules",{numberId:currentNumber});
+ $("scheduleTable").innerHTML=table(["Tujuan","Waktu","Pesan","Status"],a.map(s=>`<tr><td>${esc(s.contactPhone)}</td><td>${new Date(s.scheduledAt).toLocaleString("id-ID")}</td><td>${esc(s.message)}</td><td>${esc(s.status)}</td></tr>`));
+}
+async function loadAdmin(){
+ if(me.role!=="admin")return;
+ const u=await api("users");
+ $("usersTable").innerHTML="<h4>Akun operator</h4>"+table(["Username","Nomor ID","Status"],u.map(x=>`<tr><td>${esc(x.username)}</td><td>${esc(x.numberId)}</td><td>${String(x.active)==="true"?"Aktif":"Nonaktif"}</td></tr>`));
+ const r=await api("reports");
+ $("reports").innerHTML="<h4>Laporan per nomor</h4>"+table(["Nomor","Masuk","Keluar","Total"],r.map(x=>`<tr><td>${esc(x.label)}</td><td>${x.incoming}</td><td>${x.outgoing}</td><td>${x.total}</td></tr>`));
+}
+$("loginForm").onsubmit=async e=>{e.preventDefault();try{const d=await api("login",{username:$("username").value,password:$("password").value});token=d.token;sessionStorage.setItem("wr_token",token);$("loginError").textContent="";await boot()}catch(x){$("loginError").textContent=x.message}};
+$("logout").onclick=async()=>{try{await api("logout")}catch(e){}token="";sessionStorage.removeItem("wr_token");showLogin()};
+$("numberSelect").onchange=async()=>{currentNumber=$("numberSelect").value;await refreshAll()};
+$("chatContact").onchange=loadChat;$("refreshChat").onclick=loadChat;
+$("sendBtn").onclick=async()=>{try{await api("send",{numberId:currentNumber,to:$("chatContact").value,message:$("replyText").value});$("replyText").value="";await loadChat();note("Pesan diteruskan ke Meta API.")}catch(e){note(e.message)}};
+$("saveContact").onclick=async()=>{try{await api("saveContact",{numberId:currentNumber,phone:$("cPhone").value,name:$("cName").value,category:$("cCategory").value,notes:$("cNotes").value});await loadContacts();note("Kontak tersimpan.")}catch(e){note(e.message)}};
+$("saveKeyword").onclick=async()=>{try{await api("saveKeyword",{numberId:currentNumber,keyword:$("keyword").value,reply:$("keywordReply").value,matchType:$("matchType").value});$("keyword").value="";$("keywordReply").value="";await loadKeywords();note("Aturan tersimpan.")}catch(e){note(e.message)}};
+$("saveSchedule").onclick=async()=>{try{await api("createSchedule",{numberId:currentNumber,to:$("scheduleTo").value,message:$("scheduleMessage").value,scheduledAt:$("scheduleAt").value});await loadSchedules();note("Pesan berhasil dijadwalkan.")}catch(e){note(e.message)}};
+$("saveNumber").onclick=async()=>{try{await api("saveNumber",{label:$("nLabel").value,phoneNumberId:$("nPhoneId").value,displayPhone:$("nDisplay").value,active:true});numbers=await api("numbers");$("numberSelect").innerHTML=numbers.map(n=>`<option value="${esc(n.numberId)}">${esc(n.label)}</option>`).join("");$("opNumber").innerHTML=$("numberSelect").innerHTML;currentNumber=numbers[0]?.numberId||"";note("Nomor tersimpan.")}catch(e){note(e.message)}};
+$("createOperator").onclick=async()=>{try{await api("createOperator",{username:$("opUsername").value,password:$("opPassword").value,numberId:$("opNumber").value});await loadAdmin();note("Operator berhasil dibuat.")}catch(e){note(e.message)}};
+async function refreshAll(){await loadHome();await loadContacts();await loadKeywords();await loadSchedules();await loadAdmin()}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.add("hidden"));$(b.dataset.tab).classList.remove("hidden")});
+boot().then(()=>{if(token)refreshAll()});
+</script>
+</body></html>
